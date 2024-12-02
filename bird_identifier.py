@@ -10,92 +10,127 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropou
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
+from pydub import AudioSegment
+
+def convert_mp3_to_wav(file_path):
+    """Convert a single MP3 file to WAV and remove the original MP3 file."""
+    if file_path.endswith(".mp3"):
+        wav_path = os.path.splitext(file_path)[0] + ".wav"  # Change extension to .wav
+        try:
+            # Convert MP3 to WAV
+            audio = AudioSegment.from_mp3(file_path)
+            audio.export(wav_path, format="wav")
+            print(f"Converted: {file_path} -> {wav_path}")
+
+            # Remove the original MP3 file
+            os.remove(file_path)
+            print(f"Deleted MP3 file: {file_path}")
+            return wav_path
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
+            return None
+    return file_path  # If not MP3, return original file_path
 
 def extract_features(file_path, n_mels=128, duration=5, sr=22050):
-    """Extract mel spectrograms from audio, trimming or padding to a fixed duration."""
+    """Extract mel spectrograms from WAV audio."""
     audio, _ = librosa.load(file_path, sr=sr, duration=duration)
     mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=n_mels)
     mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
     return mel_spec_db
 
 def load_data(data_dir):
-    """Load data, extract features, and collect labels."""
+    """Load data, convert MP3 to WAV if necessary, extract features, and collect labels."""
     X, y = [], []
     labels = sorted(os.listdir(data_dir))
+    
     for label in labels:
         species_folder = os.path.join(data_dir, label)
-        for file in os.listdir(species_folder):
-            file_path = os.path.join(species_folder, file)
-            try:
-                features = extract_features(file_path)
-                X.append(features)
-                y.append(label)
-            except Exception as e:
-                print(f"Error processing {file_path}: {e}")
+        if os.path.isdir(species_folder):  # Check if it's a directory
+            for root, dirs, files in os.walk(species_folder):  # Walk through subfolders
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    if file_path.endswith('.mp3') or file_path.endswith('.wav'):
+                        try:
+                            # Convert MP3 to WAV if necessary
+                            file_path = convert_mp3_to_wav(file_path)
+
+                            # Extract features from WAV file
+                            features = extract_features(file_path)
+                            X.append(features)
+                            y.append(label)
+                        except Exception as e:
+                            print(f"Error processing {file_path}: {e}")
     return np.array(X), np.array(y), labels
 
-data_dir = 'bird_sounds'
+# Prompt user for the path to the data directory
+data_dir = input("Please enter the path to the 'bird_sounds' directory: ")
 X, y, labels = load_data(data_dir)
 
-# Encode labels
-label_encoder = LabelEncoder()
-y_encoded = label_encoder.fit_transform(y)
-y_categorical = to_categorical(y_encoded)
+if len(y) == 0:
+    print("No valid audio files found.")
+else:
+    label_encoder = LabelEncoder()
+    y_encoded = label_encoder.fit_transform(y)
+    y_categorical = to_categorical(y_encoded)
 
-# Normalize and reshape
-X_normalized = X / np.max(X)
-X_normalized = X_normalized[..., np.newaxis]  # Add channel dimension for CNN
+if X.size == 0:
+    print("No valid audio files were processed.")
+else:
+    X_normalized = X / np.max(X)
+    X_normalized = X_normalized[..., np.newaxis]
 
-# Train-test split
-X_train, X_test, y_train, y_test = train_test_split(X_normalized, y_categorical, test_size=0.2, random_state=42)# Define CNN model
-def create_cnn_model(input_shape, num_classes):
-    model = Sequential([
-        Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
-        MaxPooling2D((2, 2)),
-        Dropout(0.3),
-        Conv2D(64, (3, 3), activation='relu'),
-        MaxPooling2D((2, 2)),
-        Dropout(0.3),
-        Conv2D(128, (3, 3), activation='relu'),
-        MaxPooling2D((2, 2)),
-        Flatten(),
-        Dense(256, activation='relu'),
-        Dropout(0.5),
-        Dense(num_classes, activation='softmax')
-    ])
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return model
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X_normalized, y_categorical, test_size=0.2, random_state=42)
 
-# Initialize model
-input_shape = X_train.shape[1:]
-num_classes = len(labels)
-model = create_cnn_model(input_shape, num_classes)
+    # Define CNN model
+    def create_cnn_model(input_shape, num_classes):
+        model = Sequential([
+            Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
+            MaxPooling2D((2, 2)),
+            Dropout(0.3),
+            Conv2D(64, (3, 3), activation='relu'),
+            MaxPooling2D((2, 2)),
+            Dropout(0.3),
+            Conv2D(128, (3, 3), activation='relu'),
+            MaxPooling2D((2, 2)),
+            Flatten(),
+            Dense(256, activation='relu'),
+            Dropout(0.5),
+            Dense(num_classes, activation='softmax')
+        ])
+        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        return model
 
-# Train the model
-history = model.fit(
-    X_train, y_train,
-    epochs=20,
-    batch_size=32,
-    validation_data=(X_test, y_test)
-)
+    # Initialize model
+    input_shape = X_train.shape[1:]
+    num_classes = len(labels)
+    model = create_cnn_model(input_shape, num_classes)
 
-# Evaluate and save
-test_loss, test_acc = model.evaluate(X_test, y_test)
-print(f"Test Accuracy: {test_acc * 100:.2f}%")
-model.save('bird_sound_identifier.h5')
+    # Train the model
+    history = model.fit(
+        X_train, y_train,
+        epochs=20,
+        batch_size=32,
+        validation_data=(X_test, y_test)
+    )
 
-# Predictions
-y_pred = model.predict(X_test)
-y_pred_classes = np.argmax(y_pred, axis=1)
-y_true = np.argmax(y_test, axis=1)
+    # Evaluate and save
+    test_loss, test_acc = model.evaluate(X_test, y_test)
+    print(f"Test Accuracy: {test_acc * 100:.2f}%")
+    model.save('bird_sound_identifier.h5')
 
-# Classification Report
-print(classification_report(y_true, y_pred_classes, target_names=labels))
+    # Predictions
+    y_pred = model.predict(X_test)
+    y_pred_classes = np.argmax(y_pred, axis=1)
+    y_true = np.argmax(y_test, axis=1)
 
-# Confusion Matrix
-conf_matrix = confusion_matrix(y_true, y_pred_classes)
-plt.figure(figsize=(20, 20))
-sns.heatmap(conf_matrix, annot=True, fmt='d', xticklabels=labels, yticklabels=labels, cmap='Blues')
-plt.xlabel('Predicted')
-plt.ylabel('True')
-plt.show()
+    # Classification Report
+    print(classification_report(y_true, y_pred_classes, target_names=labels))
+
+    # Confusion Matrix
+    conf_matrix = confusion_matrix(y_true, y_pred_classes)
+    plt.figure(figsize=(20, 20))
+    sns.heatmap(conf_matrix, annot=True, fmt='d', xticklabels=labels, yticklabels=labels, cmap='Blues')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.show()
