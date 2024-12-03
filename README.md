@@ -1,4 +1,4 @@
-# Birds-Acoustics-Identifier-Model-
+# Birds-Acoustics-Identifier-Model
 
 ## **Overview**
 The Bird Sound Identifier is a deep learning-based project that uses Convolutional Neural Networks (CNNs) to classify bird species based on their audio recordings. The project processes bird sound data by extracting mel spectrograms from audio files and trains a model to accurately identify species.
@@ -24,9 +24,10 @@ The Bird Sound Identifier is a deep learning-based project that uses Convolution
   - `seaborn`
 
 To install the required libraries, run:
+
 ```bash
 pip install -r requirements.txt
-
+```
 ---
 
 ## **Usage**
