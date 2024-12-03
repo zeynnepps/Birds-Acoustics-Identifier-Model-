@@ -10,26 +10,6 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropou
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
-from pydub import AudioSegment
-
-def convert_mp3_to_wav(file_path):
-    """Convert a single MP3 file to WAV and remove the original MP3 file."""
-    if file_path.endswith(".mp3"):
-        wav_path = os.path.splitext(file_path)[0] + ".wav"  # Change extension to .wav
-        try:
-            # Convert MP3 to WAV
-            audio = AudioSegment.from_mp3(file_path)
-            audio.export(wav_path, format="wav")
-            print(f"Converted: {file_path} -> {wav_path}")
-
-            # Remove the original MP3 file
-            os.remove(file_path)
-            print(f"Deleted MP3 file: {file_path}")
-            return wav_path
-        except Exception as e:
-            print(f"Error processing {file_path}: {e}")
-            return None
-    return file_path  # If not MP3, return original file_path
 
 def extract_features(file_path, n_mels=128, duration=5, sr=22050):
     """Extract mel spectrograms from WAV audio."""
@@ -39,7 +19,7 @@ def extract_features(file_path, n_mels=128, duration=5, sr=22050):
     return mel_spec_db
 
 def load_data(data_dir):
-    """Load data, convert MP3 to WAV if necessary, extract features, and collect labels."""
+    """Load data, extract features, and collect labels."""
     X, y = [], []
     labels = sorted(os.listdir(data_dir))
     
@@ -49,11 +29,8 @@ def load_data(data_dir):
             for root, dirs, files in os.walk(species_folder):  # Walk through subfolders
                 for file in files:
                     file_path = os.path.join(root, file)
-                    if file_path.endswith('.mp3') or file_path.endswith('.wav'):
+                    if file_path.endswith('.wav'):  # Only process .wav files
                         try:
-                            # Convert MP3 to WAV if necessary
-                            file_path = convert_mp3_to_wav(file_path)
-
                             # Extract features from WAV file
                             features = extract_features(file_path)
                             X.append(features)
@@ -134,3 +111,4 @@ else:
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.show()
+    
