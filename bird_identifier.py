@@ -1,6 +1,7 @@
 import os
 import librosa
 import librosa.display
+import soundfile as sf
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras.utils import to_categorical
@@ -11,12 +12,21 @@ from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-def extract_features(file_path, n_mels=128, duration=5, sr=22050):
+def extract_features(file_path, n_mels=128, sr=22050):
     """Extract mel spectrograms from WAV audio."""
-    audio, _ = librosa.load(file_path, sr=sr, duration=duration)
-    mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=n_mels)
-    mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
-    return mel_spec_db
+    try:
+        # Debugging: Print file being processed
+        print(f"Processing file: {file_path}")
+        audio, _ = librosa.load(file_path, sr=sr)  # Removed duration to avoid limit
+        mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=n_mels)
+        mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
+        return mel_spec_db
+    except sf.SoundFileError as e:
+        print(f"SoundFile error with {file_path}: {e}")
+        return None
+    except Exception as e:
+        print(f"Unexpected error with {file_path}: {e}")
+        return None
 
 def load_data(data_dir):
     """Load data, extract features, and collect labels."""
@@ -26,17 +36,21 @@ def load_data(data_dir):
     for label in labels:
         species_folder = os.path.join(data_dir, label)
         if os.path.isdir(species_folder):  # Check if it's a directory
-            for root, dirs, files in os.walk(species_folder):  # Walk through subfolders
-                for file in files:
+            for root, _, files in os.walk(species_folder):
+                wav_files = [f for f in files if f.endswith('.wav')]
+                if not wav_files:
+                    print(f"No .wav files found in {species_folder}")
+                    continue
+                
+                for file in wav_files:
                     file_path = os.path.join(root, file)
-                    if file_path.endswith('.wav'):  # Only process .wav files
-                        try:
-                            # Extract features from WAV file
-                            features = extract_features(file_path)
+                    try:
+                        features = extract_features(file_path)
+                        if features is not None:
                             X.append(features)
                             y.append(label)
-                        except Exception as e:
-                            print(f"Error processing {file_path}: {e}")
+                    except Exception as e:
+                        print(f"Error processing {file_path}: {e}")
     return np.array(X), np.array(y), labels
 
 # Prompt user for the path to the data directory
@@ -111,4 +125,3 @@ else:
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.show()
-    
